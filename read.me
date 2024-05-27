@@ -1,0 +1,83 @@
+To start Chrome and load an extension from the terminal, you can use the --load-extension flag followed by the path to your extension. Here’s how you can do it on both Linux and Windows:
+
+Linux: Open your terminal and type:
+
+google-chrome --load-extension=/path/to/your/extension
+
+Replace /path/to/your/extension with the actual path to the directory containing your extension.
+
+Windows: Open Command Prompt and type:
+
+start chrome.exe --load-extension=C:\path\to\your\extension
+
+Replace C:\path\to\your\extension with the actual path to the directory containing your extension.
+
+Please note that the path should be the absolute path to the directory containing the manifest.json file of your extension. Also, ensure that Chrome is not already running when you use these commands.
+
+Remember, this is a one-time load, meaning the extension will not remain installed on your Chrome browser if you close it. If you want the extension to persist, you need to install it through the Chrome extensions page (chrome://extensions).
+
+
+
+---
+This is logic for my chrome browser kiosk screen saver
+
+background.js
+
+    let webpage = 'http://10.0.0.6:8123/local/kommandoran/index.html#/';
+    let screensaverPage = 'http://10.0.0.6:8123';
+
+    let idleTime = 15; 								// Idle time in seconds
+    let screensaverTabId, webpageTabId;
+
+    chrome.tabs.create({url: screensaverPage}, (tab) => { 	// Open screensaver page
+    screensaverTabId = tab.id;
+    });
+    chrome.tabs.create({url: webpage}, (tab) => { 			// Open webpage and make it active
+    webpageTabId = tab.id;
+    });
+
+    chrome.idle.setDetectionInterval(idleTime);
+
+    chrome.idle.onStateChanged.addListener((state) => {
+        if (state === 'idle') {      
+        chrome.tabs.update(screensaverTabId, {active: true});
+        } else if (state === 'active') {      
+        chrome.tabs.update(webpageTabId, {active: true});
+        }
+    });
+
+---
+manifest.json
+
+    {
+        "manifest_version": 3,
+        "name": "Kiosk Screensaver",
+        "version": "1.0",
+        "background": {
+            "service_worker": "background.js"
+        },
+        "permissions": [
+            "tabs",
+            "idle"
+        ],
+        "web_accessible_resources": [
+            {
+            "resources": ["tat_popup.js", "popu.js"],
+            "matches": ["<all_urls>"]
+            }
+        ]
+    }
+---
+
+This is how I start it
+
+    google-chrome --load-extension=/path/to/your/extension
+
+
+
+---
+
+This is what I need help with:
+Since this is a kiosk browser, the user must never be allowed to enter a new URL. All URLs should be dealt with via my extension.  
+
+When I close my chrome browser, the extension should be removed
