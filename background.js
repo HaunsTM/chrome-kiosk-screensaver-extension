@@ -1,7 +1,8 @@
-/*
-let screensaverPage = 'http://10.0.0.6:8123/local/kommandoran/index.html#/';
-let webpage = 'http://10.0.0.6:8123';
-*/
+const State = Object.freeze({
+  INITIAL: Symbol("initial"),
+  IDLE: Symbol("idle"),
+  ACTIVE: Symbol("active")
+});
 
 const settings = {
   screensaverPage : {
@@ -9,7 +10,7 @@ const settings = {
     dimPercent: 50   //fully dimmed
   },
   
-  webpage : {
+  webPage : {
     url: 'https://www.sydsvenskan.se/lund',
     dimPercent: 0   //no dim
   },
@@ -21,26 +22,47 @@ const runtime = {
   screensaver : {
     tabId : -1,
   },
-  webpage: {
+  webPage: {
     tabId : -1,
   },
-  webpageTabsOpened : false
+  state : State.INITIAL
 }
 
-OpenWebpageTabs();
-
-function OpenWebpageTabs() {
-  if (!runtime.webpageTabsOpened) {
-    chrome.tabs.create({url: settings.screensaverPage.url}, (tab) => {
-      runtime.screensaver.tabId = tab.id;
+function findTabId(url) {
+  return new Promise((resolve, reject) => {
+    chrome.tabs.query({url: url}, (tabs) => {
+      if (tabs.length > 0) {
+        resolve(tabs[0].id);  // Return the ID of the first tab that matches the URL
+      } else {
+        resolve(-1);  // Return -1 if no tabs match the URL
+      }
     });
+  });
+}
 
-    chrome.tabs.create({url: settings.webpage.url}, (tab) => {
-      runtime.webpage.tabId = tab.id;
+async function createTabAndGetId(url) {
+  return new Promise((resolve, reject) => {
+    chrome.tabs.create({url: url}, (tab) => {
+      resolve(tab.id);
     });
+  });
+}
 
-    runtime.webpageTabsOpened = true;
+async function OpenWebPageTab(url) {
+  const existingTabId = await findTabId(url);
+  if (existingTabId !== -1) {
+    return existingTabId;
+  } else {
+    const newTabId =  await createTabAndGetId(url);
+    return newTabId;
   }
+}
+
+async function OpenWebPageTabs() {
+  const screensaverPageTabPromise = OpenWebPageTab(settings.screensaverPage.url);
+  const webPageTabPromise = OpenWebPageTab(settings.webPage.url);
+
+  [runtime.screensaver.tabId, runtime.webPage.tabId] = await Promise.all([screensaverPageTabPromise, webPageTabPromise]);
 }
 
 function DimScreen(tabId, dimPercent) {
@@ -53,34 +75,68 @@ function DimScreen(tabId, dimPercent) {
       chrome.tabs.sendMessage(tabId, {
         message: 'dim_screen',
         dimPercent: dimPercent
+      }, function(response) {
+        if (chrome.runtime.lastError) {
+          console.log(chrome.runtime.lastError.message);
+        } else {
+          console.log(response.status);  // Logs 'success'
+        }
       });
     } else {
       chrome.tabs.onUpdated.addListener(function listener (tabId, info) {
         if (info.status === 'complete' && tabId === tab.id) {
           chrome.tabs.onUpdated.removeListener(listener);
-          chrome.runtime.sendMessage(tabId, {
+          chrome.tabs.sendMessage(tabId, {
             message: 'dim_screen',
             dimPercent: dimPercent
-        }, function(response) {
-            console.log(response.status);  // Logs 'success'
-        });
+          }, function(response) {
+            if (chrome.runtime.lastError) {
+              console.log(chrome.runtime.lastError.message);
+            } else {
+              console.log(response.status);  // Logs 'success'
+            }
+          });
         }
       });
     }
   });
 };
-chrome.idle.setDetectionInterval(settings.idleTime);
 
-
-chrome.idle.onStateChanged.addListener((state) => {
+chrome.idle.onStateChanged.addListener(async (state) => {
   if (state === 'idle') {
-    console.log(`idle: ${runtime.screensaver.tabId}`);
+    runtime.state = State.IDLE;
+  } else if (state === 'active') {
+    runtime.state = State.ACTIVE;
+  }
+  
+console.log(state);
+  await ChangeState();
+});
+
+
+async function ChangeState() {
+
+  if (runtime.state === State.INITIAL) {
+
+    await OpenWebPageTabs();
+    runtime.state = State.ACTIVE;    
+    chrome.idle.setDetectionInterval(settings.idleTime);
+
+  } else if (runtime.state === State.ACTIVE) {
+    debugger;
+    await OpenWebPageTabs();
+    chrome.tabs.update(runtime.webPage.tabId, {active: true});
+    DimScreen(runtime.webPage.tabId, settings.webPage.dimPercent);
+
+  } else if (runtime.state === State.IDLE) {
+    debugger;
     chrome.tabs.update(runtime.screensaver.tabId, {active: true});
     DimScreen(runtime.screensaver.tabId, settings.screensaverPage.dimPercent);
+    await OpenWebPageTabs();
 
-  } else if (state === 'active') {
-    console.log(`active: ${runtime.webpage.tabId}`);
-    chrome.tabs.update(runtime.webpage.tabId, {active: true});
-    DimScreen(runtime.webpage.tabId, settings.webpage.dimPercent);
   }
-})
+}
+
+(async function() {
+  await ChangeState();
+})();
