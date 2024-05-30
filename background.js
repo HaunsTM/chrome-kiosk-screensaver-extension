@@ -27,7 +27,9 @@ const runtime = {
   webPage: {
     tabId : -1,
   },
-  state : State.INITIAL
+  state : State.INITIAL,
+  countdownBeforeIdlenessTimerId: null,
+  countdownCounterTimerId: null
 }
 
 function findTabId(url) {
@@ -67,8 +69,6 @@ async function OpenWebPageTabs() {
   [runtime.screensaver.tabId, runtime.webPage.tabId] = await Promise.all([screensaverPageTabPromise, webPageTabPromise]);
 }
 
-
-
 function ChangeScreenBrightness(tabId, dimPercent) {
   const dimValue = dimPercent / 100;  
 
@@ -91,20 +91,29 @@ function ChangeScreenBrightness(tabId, dimPercent) {
 chrome.idle.onStateChanged.addListener(async (state) => {
   if (state === 'idle') {
     runtime.state = State.IDLE;
+    // Clear the countdown if the state changes to 'idle'
+    if (runtime.countdownBeforeIdlenessTimerId) {
+      clearTimeout(runtime.countdownBeforeIdlenessTimerId);
+      runtime.countdownBeforeIdlenessTimerId = null;
+    }
   } else if (state === 'active') {
     runtime.state = State.ACTIVE;
+    // Start a countdown when the state changes to 'active'
+    runtime.countdownBeforeIdlenessTimerId = setTimeout(() => {
+      console.log('5 seconds left before idle');
+    }, (settings.idleTime - 5) * 1000);
   }  
-  await ChangeState();
 });
 
 
 async function ChangeState() {
 
+  await OpenWebPageTabs();
+
   if (runtime.state === State.INITIAL) {
 
-    await OpenWebPageTabs();
     runtime.state = State.ACTIVE;    
-    //chrome.idle.setDetection
+    //chrome.idle.setDetectionInterval(settings.idleTime);
     setInterval(async function() { await ChangeState(); }, 5000);
 
   } else if (runtime.state === State.ACTIVE) {
