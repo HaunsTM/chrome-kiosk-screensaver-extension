@@ -1,6 +1,6 @@
 const PerformDimScreen = (dimValue) => {
   let overlay = document.getElementById('dimOverlay');
-    
+  
   // If the overlay doesn't exist, create it
   if (!overlay) {
     overlay = document.createElement('div');
@@ -17,14 +17,28 @@ const PerformDimScreen = (dimValue) => {
   overlay.style.backgroundColor = `rgba(0, 0, 0, ${dimValue})`;
 }
 
+const PerformUndimScreen = () => {
+  let overlay = document.getElementById('dimOverlay');
+  
+  // If the overlay exists, remove it
+  if (overlay) {
+    overlay.remove();
+  }
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log(request);
-  if (request.message === 'dim_screen') {
+  if (request.message === 'change_screen_brightness') {
     const dimValue = request.dimPercent / 100;
-    PerformDimScreen(dimValue);
-    sendResponse({status: 'dimmed screen'});  // Send a response back to the sender
-
-  } else if (request.message === 'start_countdown') {
+    if (dimValue > 0) {
+      PerformDimScreen(dimValue);
+      sendResponse({status: 'dimmed screen'});  // Send a response back to the sender
+    } else {
+      PerformUndimScreen();
+      sendResponse({status: 'undimmed screen'});  // Send a response back to the sender
+    }
+  }
+  else if (request.message === 'start_countdown') {
     let countdown = request.countdown;
     let countdownElement = document.createElement('div');
     countdownElement.style.position = 'fixed';

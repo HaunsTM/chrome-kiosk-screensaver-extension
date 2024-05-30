@@ -1,21 +1,23 @@
 const State = Object.freeze({
   INITIAL: Symbol("initial"),
-  IDLE: Symbol("idle"),
-  ACTIVE: Symbol("active")
+  ACTIVE: Symbol("active"),
+  COUNTDOWN_COUNTER: Symbol("countdownCounter"),
+  IDLE: Symbol("idle")
 });
 
 const settings = {
   screensaverPage : {
     url: 'https://www.svt.se/',
-    dimPercent: 50   //fully dimmed
+    dimPercent: 80   //fully dimmed
   },
   
   webPage : {
     url: 'https://www.sydsvenskan.se/lund',
     dimPercent: 0   //no dim
   },
-
-  idleTime : 15								// Idle time in seconds
+  noDim: 0,
+  idleTime : 15,								// Idle time in seconds
+  countDownStart: 5
 };
 
 const runtime = {
@@ -65,37 +67,21 @@ async function OpenWebPageTabs() {
   [runtime.screensaver.tabId, runtime.webPage.tabId] = await Promise.all([screensaverPageTabPromise, webPageTabPromise]);
 }
 
-function DimScreen(tabId, dimPercent) {
+
+
+function ChangeScreenBrightness(tabId, dimPercent) {
   const dimValue = dimPercent / 100;  
 
   chrome.tabs.get(tabId, function(tab) {
-    if (chrome.runtime.lastError) {
-      console.log(chrome.runtime.lastError.message);
-    } else if (tab.status === 'complete') {
+    if (tab.status === 'complete') {
       chrome.tabs.sendMessage(tabId, {
-        message: 'dim_screen',
+        message: 'change_screen_brightness',
         dimPercent: dimPercent
       }, function(response) {
-        if (chrome.runtime.lastError) {
-          console.log(chrome.runtime.lastError.message);
-        } else {
+        if (response) {
           console.log(response.status);  // Logs 'success'
-        }
-      });
-    } else {
-      chrome.tabs.onUpdated.addListener(function listener (tabId, info) {
-        if (info.status === 'complete' && tabId === tab.id) {
-          chrome.tabs.onUpdated.removeListener(listener);
-          chrome.tabs.sendMessage(tabId, {
-            message: 'dim_screen',
-            dimPercent: dimPercent
-          }, function(response) {
-            if (chrome.runtime.lastError) {
-              console.log(chrome.runtime.lastError.message);
-            } else {
-              console.log(response.status);  // Logs 'success'
-            }
-          });
+        } else {
+          console.log('No response received');
         }
       });
     }
@@ -107,9 +93,7 @@ chrome.idle.onStateChanged.addListener(async (state) => {
     runtime.state = State.IDLE;
   } else if (state === 'active') {
     runtime.state = State.ACTIVE;
-  }
-  
-console.log(state);
+  }  
   await ChangeState();
 });
 
@@ -120,23 +104,30 @@ async function ChangeState() {
 
     await OpenWebPageTabs();
     runtime.state = State.ACTIVE;    
-    chrome.idle.setDetectionInterval(settings.idleTime);
+    //chrome.idle.setDetection
+    setInterval(async function() { await ChangeState(); }, 5000);
 
   } else if (runtime.state === State.ACTIVE) {
-    debugger;
     await OpenWebPageTabs();
     chrome.tabs.update(runtime.webPage.tabId, {active: true});
-    DimScreen(runtime.webPage.tabId, settings.webPage.dimPercent);
+    ChangeScreenBrightness(runtime.screensaver.tabId, settings.noDim);
+    runtime.state = State.IDLE;
 
-  } else if (runtime.state === State.IDLE) {
-    debugger;
+  } else if (runtime.state === State.COUNTDOWN_COUNTER) {
     chrome.tabs.update(runtime.screensaver.tabId, {active: true});
-    DimScreen(runtime.screensaver.tabId, settings.screensaverPage.dimPercent);
+    ChangeScreenBrightness(runtime.screensaver.tabId, settings.screensaverPage.dimPercent);
     await OpenWebPageTabs();
-
+    runtime.state = State.ACTIVE;
+  } else if (runtime.state === State.IDLE) {
+    chrome.tabs.update(runtime.screensaver.tabId, {active: true});
+    ChangeScreenBrightness(runtime.screensaver.tabId, settings.screensaverPage.dimPercent);
+    await OpenWebPageTabs();
+    runtime.state = State.ACTIVE;
   }
 }
 
+
+// start the extension
 (async function() {
   await ChangeState();
 })();
