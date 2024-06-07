@@ -5,7 +5,6 @@ const State = Object.freeze({
   IDLE: Symbol("idle")
 });
 
-// common settings constants
 const settings = {
   screensaverPage : {
     urlStart: 'http://10.0.0.6:8123/local/screensaver/index.html#/screen-saver',
@@ -23,7 +22,6 @@ const settings = {
   countDownStart: 5
 };
 
-// common runtime variables
 const runtime = {
   screensaver : {
     urlCurrent : 'NO_URL',
@@ -39,7 +37,6 @@ const runtime = {
   countdownCounterValue: -1
 }
 
-// debug logic
 const WriteToLog = (logMessage) => {
   let currentDateTime = new Date();
   let year = currentDateTime.getFullYear();
@@ -62,7 +59,6 @@ const SetTabName = (tabId, newTabName) => {
   });
 }
 
-// tab logic
 function findTabId(regex) {
   return new Promise((resolve, reject) => {
     chrome.tabs.query({}, (tabs) => {
@@ -98,28 +94,23 @@ async function OpenWebPageTab(targetUrl, targetUrlRegex) {
 }
 
 async function EnsureOpenWebPagesAndUpdateTabIds() {
-  runtime.screensaver.tabId = await OpenWebPageTab(settings.screensaverPage.urlStart, settings.screensaverPage.regexMandatoryUrl);
-  runtime.webPage.tabId = await OpenWebPageTab(settings.webPage.urlStart, settings.webPage.regexMandatoryUrl);
+  const screensaverPageTabPromise = OpenWebPageTab(settings.screensaverPage.urlStart, settings.screensaverPage.regexMandatoryUrl);
+  const webPageTabPromise = OpenWebPageTab(settings.webPage.urlStart, settings.webPage.regexMandatoryUrl);
 
+  [runtime.screensaver.tabId, runtime.webPage.tabId] = await Promise.all([screensaverPageTabPromise, webPageTabPromise]);
   SetTabName(runtime.screensaver.tabId,runtime.screensaver.tabId);
   SetTabName(runtime.webPage.tabId,runtime.webPage.tabId);
 }
 
-//message to content.js
 function ChangeScreenBrightness(tabId, dimPercent) {
-  const dimValue = dimPercent / 100;
-  
-  const message = {            
-    category: `backgroundToContentEvent`,
-    tabId: tabId,
-    time: Date.now(),
-    task: 'changeScreenBrightness',
-    setPoint: dimValue
-  };
+  const dimValue = dimPercent / 100;  
 
   chrome.tabs.get(tabId, function(tab) {
     if (tab.status === 'complete') {
-      chrome.tabs.sendMessage(tabId, message, function(response) {
+      chrome.tabs.sendMessage(tabId, {
+        message: 'change_screen_brightness',
+        dimPercent: dimPercent
+      }, function(response) {
         if (response) {
           WriteToLog('change_screen_brightness done');
         } else {
@@ -130,81 +121,41 @@ function ChangeScreenBrightness(tabId, dimPercent) {
   });
 };
 
-async function ChangeState() {
-  
-  await EnsureOpenWebPagesAndUpdateTabIds();
 
-  switch (runtime.state) {
-    case State.INITIAL:
-      WriteToLog(`State.INITIAL`);
-      
-      runtime.state = State.ACTIVE;
-      await ChangeState();
-      break;
-    case State.ACTIVE:
-      WriteToLog(`State.ACTIVE`);
-
-      // Clear the timeout if it exists
-      if (runtime.countdownBeforeIdlenessTimerId) {
-        clearTimeout(runtime.countdownBeforeIdlenessTimerId);
-      }
-      if (runtime.countdownCounterTimerId) {
-        clearInterval(runtime.countdownCounterTimerId);
-      }
-
-      ChangeScreenBrightness(runtime.screensaver.tabId, settings.noDim);
-      // Set a new timeout
-      runtime.countdownBeforeIdlenessTimerId = setTimeout(async () => {
-        runtime.state = State.COUNTDOWN;
-        await ChangeState();
-      }, (settings.idleTime - settings.countDownStart) * 1000);
-      break;
-
-    case State.COUNTDOWN:
-      WriteToLog(`State.COUNTDOWN`);
-
-      if (runtime.countdownCounterTimerId) {
-        clearInterval(runtime.countdownCounterTimerId);
-      }
-      
-      runtime.countdownCounterValue = settings.countDownStart;
-
-      runtime.countdownCounterTimerId = setInterval(async () => {
-        runtime.countdownCounterValue--;
-        console.log(`Countdown: ${runtime.countdownCounterValue}`);
-        if (runtime.countdownCounterValue <= 0) {
-          if (runtime.countdownCounterTimerId) {
-            clearInterval(runtime.countdownCounterTimerId);
-          }
+function PrintCountDownCounterValue(tabId, counterValue) {
+  chrome.tabs.get(tabId, function(tab) {
+    if (chrome.runtime.lastError) {
+      console.log(chrome.runtime.lastError.message);
+    } else if (tab.status === 'complete') {
+      chrome.tabs.sendMessage(tabId, {
+        message: 'countdown',
+        counterValue: counterValue
+      }, function(response) {
+        if (response) {
+          WriteToLog(`countdown performed: ${response}`);
+        } else {
+          WriteToLog(`countdown failed: ${response}`);
         }
-      }, 1000);
-      break;
-    case State.IDLE:
-      WriteToLog(`State.IDLE`);
+      });
+    }
+  });
+};
 
-      if (runtime.countdownBeforeIdlenessTimerId) {
-        clearTimeout(runtime.countdownBeforeIdlenessTimerId);
-      }
-      if (runtime.countdownCounterTimerId) {
-        clearInterval(runtime.countdownCounterTimerId);
-      }
-      ChangeScreenBrightness(runtime.screensaver.tabId, settings.screensaverPage.dimPercent);
-      break;
-  }
-}
-
-chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
-  if (message.category === 'documentEvent' &&
-     (message.type === 'click' || 
-      message.type === 'keydown' || 
-      message.type === 'mousemove' || 
-      message.type === 'touchmove' || 
-      message.type === 'touchstart' 
-    )) {
-    runtime.state = State.ACTIVE;
-    await ChangeState();
-  }
-});
+function RemoveCountDownCounter(tabId) {
+  chrome.tabs.get(tabId, function(tab) {
+    if (tab.status === 'complete') {
+      chrome.tabs.sendMessage(tabId, {
+        message: 'countdownRemove',
+      }, function(response) {
+        if (response) {
+          WriteToLog(`countdownRemove performed: ${response}`);
+        } else {
+          WriteToLog(`countdownRemove failed`);
+        }
+      });
+    }
+  });
+};
 
 chrome.idle.onStateChanged.addListener(async (state) => {
   if (state === 'idle') {
@@ -212,12 +163,72 @@ chrome.idle.onStateChanged.addListener(async (state) => {
   } else if (state === 'active') {
     runtime.state = State.ACTIVE;
   }
-  await ChangeState();
+  ChangeState();
 });
 
-chrome.idle.setDetectionInterval(settings.idleTime);
+function StopAndResetTimerSafe(timerId) {
+  if (timerId) {
+    clearTimeout(timerId);
+  }
+}
+
+async function ChangeState() {
+
+  await EnsureOpenWebPagesAndUpdateTabIds();
+  StopAndResetTimerSafe(runtime.countdownBeforeIdlenessTimerId);
+  RemoveCountDownCounter(runtime.webPage.tabId);
+  
+  switch (runtime.state) {
+    case State.INITIAL:
+      runtime.state = State.ACTIVE;
+      chrome.idle.setDetectionInterval(settings.idleTime);
+      break;
+
+    case State.ACTIVE:
+      chrome.tabs.update(runtime.webPage.tabId, {active: true});      
+      WriteToLog(`1`);
+
+      ChangeScreenBrightness(runtime.screensaver.tabId, settings.noDim);
+      StopAndResetTimerSafe(runtime.countdownCounterTimerId);
+      
+      runtime.countdownBeforeIdlenessTimerId = setTimeout(() => {
+        runtime.state = State.COUNTDOWN_COUNTER;
+        StopAndResetTimerSafe(runtime.countdownBeforeIdlenessTimerId);
+        ChangeState();
+      }, (settings.idleTime - settings.countDownStart) * 1000);
+      break;
+
+    case State.COUNTDOWN_COUNTER:
+      runtime.countdownCounterValue = settings.countDownStart;
+      WriteToLog(`2`);
+
+      StopAndResetTimerSafe(runtime.countdownCounterTimerId);
+
+      runtime.countdownCounterTimerId = setInterval(() => {
+        runtime.countdownCounterValue--;
+        WriteToLog(`2a`);
+        PrintCountDownCounterValue(runtime.webPage.tabId, runtime.countdownCounterValue);
+        if (runtime.countdownCounterValue <= 0) {
+          WriteToLog(`2b`);
+          StopAndResetTimerSafe(runtime.countdownCounterTimerId);
+          RemoveCountDownCounter(runtime.webPage.tabId);
+          WriteToLog(`2c`);
+        }
+      }, 1000); // 1000 milliseconds = 1 second     
+      break;
+
+    case State.IDLE:
+        chrome.tabs.update(runtime.screensaver.tabId, {active: true});
+        WriteToLog(`3`);
+          
+        StopAndResetTimerSafe(runtime.countdownCounterTimerId);
+        RemoveCountDownCounter(runtime.webPage.tabId);
+        ChangeScreenBrightness(runtime.screensaver.tabId, settings.screensaverPage.dimPercent);
+      break;
+  }
+}
 
 // start the extension
-(async () => {
+(async function() {
   await ChangeState();
 })();

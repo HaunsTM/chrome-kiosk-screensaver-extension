@@ -6,21 +6,23 @@
     "activeTab",
     "tabs",
     "idle",
-    "storage"
+    "storage",
+
+    "scripting"
   ],
   "background": {
     "service_worker": "background.js"
   },
+  "host_permissions": [
+    "http://10.0.0.6:8123/"
+  ],
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content.js"]
-    }
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": ["tat_popup.js", "popu.js"],
-      "matches": ["<all_urls>"]
+      "js": [
+        "content.js",
+        "documentEventListeners.js"
+      ]
     }
   ]
 }

@@ -33,18 +33,16 @@ const dimCountdownElement = 'dimCountdownElement';
 const PrintCounterValue = (counterValue) => {
   let countdownElement = document.getElementById(dimCountdownElement);
   
-  // If the overlay doesn't exist, create it
   if (!countdownElement) {
     countdownElement = document.createElement('div');
     countdownElement.id = dimCountdownElement;
     countdownElement.style.position = 'fixed';
-    countdownElement.style.bottom = '20px';
-    countdownElement.style.right = '20px';
-    countdownElement.style.zIndex = 999999;
-    countdownElement.style.fontSize = '20px';
-    countdownElement.style.backgroundColor = 'white';
-    countdownElement.style.padding = '10px';
-    countdownElement.style.borderRadius = '5px';
+    countdownElement.style.top = '50%';
+    countdownElement.style.left = '50%';
+    countdownElement.style.transform = 'translate(-50%, -50%)';
+    countdownElement.style.zIndex = 1000000;
+    countdownElement.style.fontSize = '10rem';
+    countdownElement.style.color = 'gray';
     document.body.appendChild(countdownElement);
   }
   
@@ -60,26 +58,40 @@ const RemoveCounterValue = () => {
   }
 }
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  
-  if (request.message === 'change_screen_brightness') {
-    const dimValue = request.dimPercent / 100;
-    if (dimValue > 0) {
-      PerformDimScreen(dimValue);
-      sendResponse({status: `dimmed screen to ${dimValue} performed`});  // Send a response back to the sender
-    } else {
-      PerformUndimScreen();
-      sendResponse({status: `undimmed screen performed`});  // Send a response back to the sender
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.category === 'backgroundToContentEvent') {
+    switch (message.task) {
+      case 'changeScreenBrightness':
+        if (message.setPoint > 0) {
+          PerformDimScreen(dimValue);
+          sendResponse({
+            performed: `dimmed screen to ${dimValue}`,
+            time: Date.now()
+          });
+        } else {
+          PerformUndimScreen();
+          sendResponse({
+            performed: `undimmed screen`,
+            time: Date.now()
+          });
+        }
+        break;
+      case 'countdown':
+        let countdown = request.counterValue;
+        PrintCounterValue(countdown);
+        sendResponse({
+          performed: `counted down ${countdown}`,
+          time: Date.now()
+        });
+        break;
+      case 'countdownRemove':        
+        RemoveCounterValue();
+        sendResponse({
+          performed: `counted removed`,
+          time: Date.now()
+        });
+        break;
     }
-  }
-  else if (request.message === 'countdown') {
-    let countdown = request.counterValue;
-    PrintCounterValue(countdown);
-    sendResponse({status: `count down ${countdown} performed`});  // Send a response back to the sender
-  }
-  else if (request.message === 'countdownRemove') {
-    RemoveCounterValue();
-    sendResponse({status: `count down removed performed`});  // Send a response back to the sender
   }
   return true;
 });
