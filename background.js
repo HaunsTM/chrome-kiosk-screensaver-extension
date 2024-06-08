@@ -9,13 +9,13 @@ const State = Object.freeze({
 const settings = {
   screensaverPage : {
     urlStart: 'http://10.0.0.6:8123/local/screensaver/index.html#/screen-saver',
-    regexMandatoryUrl: /(https?:[/]{2})10[.]0[.]0[.]6[:]8123+[/](?=.*screen-saver).*/g,
+    regexMandatoryUrl: /(https?:[/]{2})10[.]0[.]0[.]6[:]8123[/](?=.*screen-saver).*/g,
     dimPercent: 80   //fully dimmed
   },
   
   webPage : {
     urlStart: 'http://10.0.0.6:8123/lovelace/default_view',
-    regexMandatoryUrl: /(https?:[/]{2})10[.]0[.]0[.]6[:]8123+[/](?!local[/]).*/g,
+    regexMandatoryUrl: /(https?:[/]{2})10[.]0[.]0[.]6[:]8123[/](?!local[/]).*/g,
     dimPercent: 0   //no dim
   },
   noDim: 0,
@@ -67,13 +67,14 @@ function findTabId(regex) {
   return new Promise((resolve, reject) => {
     chrome.tabs.query({}, (tabs) => {
       for(let i = 0; i < tabs.length; i++) {
-        if (regex.test(tabs[i].url)) {
-          WriteToLog(`found ${tabs[i].url}`)
+        if (regex.test(tabs[i].url) || regex.test(tabs[i].pendingUrl)) {
           resolve(tabs[i].id);
           return;
         }
       }
-      resolve(-1);  // Return -1 if no tabs match the URL
+      
+      WriteToLog(`NOT_FOUND ${regex} | ${JSON.stringify(tabs)}`)
+      resolve(-1);  // Return -1 if no tabs match the URL      
     });
   });
 }
@@ -88,7 +89,7 @@ async function createTabAndGetId(url) {
 
 async function OpenWebPageTab(targetUrl, targetUrlRegex) {
   const existingTabId = await findTabId(targetUrlRegex);
-  if (existingTabId !== -1) {
+  if (existingTabId !== -1) {    
     return existingTabId;
   } else {
     const newTabId =  await createTabAndGetId(targetUrl);
@@ -98,9 +99,10 @@ async function OpenWebPageTab(targetUrl, targetUrlRegex) {
 }
 
 async function EnsureOpenWebPagesAndUpdateTabIds() {
-  runtime.screensaver.tabId = await OpenWebPageTab(settings.screensaverPage.urlStart, settings.screensaverPage.regexMandatoryUrl);
-  runtime.webPage.tabId = await OpenWebPageTab(settings.webPage.urlStart, settings.webPage.regexMandatoryUrl);
+  const screensaverPageTabPromise = await OpenWebPageTab(settings.screensaverPage.urlStart, settings.screensaverPage.regexMandatoryUrl);
+  const webPageTabPromise = OpenWebPageTab(settings.webPage.urlStart, settings.webPage.regexMandatoryUrl);
 
+  [runtime.screensaver.tabId, runtime.webPage.tabId] = await Promise.all([screensaverPageTabPromise, webPageTabPromise]);
   SetTabName(runtime.screensaver.tabId,runtime.screensaver.tabId);
   SetTabName(runtime.webPage.tabId,runtime.webPage.tabId);
 }
@@ -118,17 +120,21 @@ function ChangeScreenBrightness(tabId, dimPercent) {
   };
 
   chrome.tabs.get(tabId, function(tab) {
-    if (tab.status === 'complete') {
+    if (chrome.runtime.lastError) {
+      console.log(chrome.runtime.lastError.message);
+    } else if (tab.status === 'complete') {
       chrome.tabs.sendMessage(tabId, message, function(response) {
-        if (response) {
+        if (chrome.runtime.lastError) {
+          console.log(chrome.runtime.lastError.message);
+        } else if (response) {
           WriteToLog('change_screen_brightness done');
         } else {
-          WriteToLog('change_screen_brightness failed');
+          WriteToLog('No response received, possible reasons could be: no listener in content script, or the listener did not send a response.');
         }
       });
     }
   });
-};
+}
 
 async function ChangeState() {
   
@@ -188,22 +194,28 @@ async function ChangeState() {
       if (runtime.countdownCounterTimerId) {
         clearInterval(runtime.countdownCounterTimerId);
       }
+
       ChangeScreenBrightness(runtime.screensaver.tabId, settings.screensaverPage.dimPercent);
       break;
   }
 }
 
-chrome.runtime.onMessage.addListener(async (message, sender, sendResponse) => {
-  if (message.category === 'documentEvent' &&
-     (message.type === 'click' || 
-      message.type === 'keydown' || 
-      message.type === 'mousemove' || 
-      message.type === 'touchmove' || 
-      message.type === 'touchstart' 
-    )) {
-    runtime.state = State.ACTIVE;
-    await ChangeState();
-  }
+// Listen for connections from content scripts
+chrome.runtime.onConnect.addListener((port) => {
+  // Listen for messages from the content script
+  port.onMessage.addListener(async (message) => {
+    if (message.category === 'documentEvent' &&
+      (message.type === 'click' || 
+       message.type === 'keydown' || 
+       message.type === 'mousemove' || 
+       message.type === 'touchmove' || 
+       message.type === 'touchstart' 
+     )) {
+     runtime.state = State.ACTIVE;
+     
+     await ChangeState();
+   }
+  });
 });
 
 chrome.idle.onStateChanged.addListener(async (state) => {

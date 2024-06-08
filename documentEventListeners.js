@@ -1,7 +1,40 @@
-// this script contains listeners for different tyoes of user actions in the DOM
+let port = chrome.runtime.connect();
+
+port.onDisconnect.addListener(function() {
+  console.log("The connection to the background page has been lost.");
+  port = null; // Clear the port variable
+});
+
+function sendMessage(message) {
+  if (port) {
+    try {
+      port.postMessage(message);
+    } catch (error) {
+      console.log("Failed to send message:", error);
+      // Re-establish the connection
+      port = chrome.runtime?.connect();
+      if (port) {
+        port.postMessage(message);
+      } else {
+        console.log("Failed to re-establish the connection.");
+      }
+    }
+  } else {
+    // Re-establish the connection
+    port = chrome.runtime?.connect();
+    if (port) {
+      port.postMessage(message);
+    } else {
+      console.log("Failed to re-establish the connection.");
+    }
+  }
+}
+
+// Check if the port is still open before sending a message
 
 document.addEventListener('click', (e) => {
-  chrome.runtime.sendMessage({
+  // Send a message through the port
+  sendMessage({
     category: `documentEvent`,
     event: e,
     time: Date.now(),
@@ -10,7 +43,7 @@ document.addEventListener('click', (e) => {
 });
 
 document.addEventListener('keydown', (e) => {
-  chrome.runtime.sendMessage({
+  sendMessage({
     category: `documentEvent`,
     event: e,
     time: Date.now(),
@@ -19,7 +52,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 document.addEventListener('mousemove', (e) => {
-  chrome.runtime.sendMessage({
+  sendMessage({
     category: `documentEvent`,
     event: e,
     time: Date.now(),
@@ -28,7 +61,7 @@ document.addEventListener('mousemove', (e) => {
 });
 
 document.addEventListener('touchmove', (e) => {
-  chrome.runtime.sendMessage({
+  sendMessage({
     category: `documentEvent`,
     event: e,
     time: Date.now(),
@@ -37,7 +70,7 @@ document.addEventListener('touchmove', (e) => {
 });
 
 document.addEventListener('touchstart', (e) => {
-  chrome.runtime.sendMessage({
+  sendMessage({
     category: `documentEvent`,
     event: e,
     time: Date.now(),
