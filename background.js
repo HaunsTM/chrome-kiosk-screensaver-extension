@@ -108,17 +108,7 @@ async function EnsureOpenWebPagesAndUpdateTabIds() {
 }
 
 //message to content.js
-function ChangeScreenBrightness(tabId, dimPercent) {
-  const dimValue = dimPercent / 100;
-  
-  const message = {            
-    category: `backgroundToContentEvent`,
-    tabId: tabId,
-    time: Date.now(),
-    task: 'changeScreenBrightness',
-    setPoint: dimValue
-  };
-
+function sendMessageToTab(tabId, message, callback) {
   chrome.tabs.get(tabId, function(tab) {
     if (chrome.runtime.lastError) {
       console.log(chrome.runtime.lastError.message);
@@ -127,7 +117,7 @@ function ChangeScreenBrightness(tabId, dimPercent) {
         if (chrome.runtime.lastError) {
           console.log(chrome.runtime.lastError.message);
         } else if (response) {
-          WriteToLog('change_screen_brightness done');
+          callback(response);
         } else {
           WriteToLog('No response received, possible reasons could be: no listener in content script, or the listener did not send a response.');
         }
@@ -135,6 +125,58 @@ function ChangeScreenBrightness(tabId, dimPercent) {
     }
   });
 }
+
+function ChangeScreenBrightness(tabId, dimPercent) {
+  const dimValue = dimPercent / 100;
+  
+  const message = {
+    category: `backgroundToContentEvent`,
+    tabId: tabId,
+    time: Date.now(),
+    task: 'changeScreenBrightness',
+    setPoint: dimValue
+  };
+
+  sendMessageToTab(tabId, message, function(response) {
+    WriteToLog('change_screen_brightness done');
+  });
+}
+
+function PrintCountDownCounterValue(tabId, counterValue) {
+  const message = {
+    category: `backgroundToContentEvent`,
+    tabId: tabId,
+    time: Date.now(),
+    task: 'countDown',
+    setPoint: counterValue
+  };
+
+  sendMessageToTab(tabId, message, function(response) {
+    if (response) {
+      WriteToLog(`countdown performed: ${response}`);
+    } else {
+      WriteToLog(`countdown failed: ${response}`);
+    }
+  });
+}
+function RemoveCountDownCounter () {
+  const message = {
+    category: `backgroundToContentEvent`,
+    tabId: tabId,
+    time: Date.now(),
+    task: 'countDownRemove',
+    setPoint: counterValue
+  };
+
+  sendMessageToTab(tabId, message, function(response) {
+    if (response) {
+      WriteToLog(`countDownRemove performed: ${response}`);
+    } else {
+      WriteToLog(`countDownRemove failed: ${response}`);
+    }
+  });
+}
+
 
 async function ChangeState() {
   
@@ -157,7 +199,7 @@ async function ChangeState() {
       if (runtime.countdownCounterTimerId) {
         clearInterval(runtime.countdownCounterTimerId);
       }
-
+      RemoveCountDownCounter(runtime.webPage.tabId);
       ChangeScreenBrightness(runtime.screensaver.tabId, settings.noDim);
       // Set a new timeout
       runtime.countdownBeforeIdlenessTimerId = setTimeout(async () => {
@@ -178,10 +220,12 @@ async function ChangeState() {
       runtime.countdownCounterTimerId = setInterval(async () => {
         runtime.countdownCounterValue--;
         console.log(`Countdown: ${runtime.countdownCounterValue}`);
+        PrintCountDownCounterValue(runtime.webPage.tabId, runtime.countdownCounterValue);
         if (runtime.countdownCounterValue <= 0) {
           if (runtime.countdownCounterTimerId) {
             clearInterval(runtime.countdownCounterTimerId);
           }
+          RemoveCountDownCounter(runtime.webPage.tabId);
         }
       }, 1000);
       break;
@@ -194,7 +238,7 @@ async function ChangeState() {
       if (runtime.countdownCounterTimerId) {
         clearInterval(runtime.countdownCounterTimerId);
       }
-
+      RemoveCountDownCounter(runtime.webPage.tabId);
       ChangeScreenBrightness(runtime.screensaver.tabId, settings.screensaverPage.dimPercent);
       break;
   }

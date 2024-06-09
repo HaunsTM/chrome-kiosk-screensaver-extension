@@ -41,7 +41,7 @@ const PrintCounterValue = (counterValue) => {
     countdownElement.style.left = '50%';
     countdownElement.style.transform = 'translate(-50%, -50%)';
     countdownElement.style.zIndex = 1000000;
-    countdownElement.style.fontSize = '10rem';
+    countdownElement.style.fontSize = '20rem';
     countdownElement.style.color = 'gray';
     document.body.appendChild(countdownElement);
   }
@@ -62,7 +62,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.category === 'backgroundToContentEvent') {
     switch (message.task) {
       case 'changeScreenBrightness':
-        if (message.setPoint > 0) {
+        const dimValue = message.setPoint;
+        if (dimValue > 0) {
           PerformDimScreen(dimValue);
           sendResponse({
             performed: `dimmed screen to ${dimValue}`,
@@ -76,18 +77,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           });
         }
         break;
-      case 'countdown':
-        let countdown = request.counterValue;
-        PrintCounterValue(countdown);
+      case 'countDown':
+        let counterValue = message.setPoint;
+        PrintCounterValue(counterValue);
         sendResponse({
-          performed: `counted down ${countdown}`,
+          performed: `counted down ${counterValue}`,
           time: Date.now()
         });
         break;
-      case 'countdownRemove':        
+      case 'countDownRemove':        
         RemoveCounterValue();
         sendResponse({
           performed: `counted removed`,
+          time: Date.now()
+        });
+        break;
+      default:
+        sendResponse({
+          performed: `task not recognized: ${message.task}`,
           time: Date.now()
         });
         break;

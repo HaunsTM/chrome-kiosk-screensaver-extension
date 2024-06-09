@@ -145,12 +145,12 @@ function RemoveCountDownCounter(tabId) {
   chrome.tabs.get(tabId, function(tab) {
     if (tab.status === 'complete') {
       chrome.tabs.sendMessage(tabId, {
-        message: 'countdownRemove',
+        message: 'countDownRemove',
       }, function(response) {
         if (response) {
-          WriteToLog(`countdownRemove performed: ${response}`);
+          WriteToLog(`countDownRemove performed: ${response}`);
         } else {
-          WriteToLog(`countdownRemove failed`);
+          WriteToLog(`countDownRemove failed`);
         }
       });
     }
