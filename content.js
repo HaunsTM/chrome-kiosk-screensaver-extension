@@ -1,5 +1,21 @@
 const dimOverlay = 'dimOverlay';
 
+const EnterFullScreen = () => {
+  if (request.message === "enter_full_screen") {
+    var docElm = document.documentElement;
+    if (docElm.requestFullscreen) {
+      docElm.requestFullscreen();
+    } else if (docElm.mozRequestFullScreen) { // Firefox
+      docElm.mozRequestFullScreen();
+    } else if (docElm.webkitRequestFullScreen) { // Chrome, Safari and Opera
+      docElm.webkitRequestFullScreen();
+    } else if (docElm.msRequestFullscreen) { // IE/Edge
+      docElm.msRequestFullscreen();
+    }
+  }
+}
+
+
 const PerformDimScreen = (dimValue) => {
   let overlay = document.getElementById(dimOverlay);
   
@@ -41,7 +57,7 @@ const PrintCounterValue = (counterValue) => {
     countdownElement.style.left = '50%';
     countdownElement.style.transform = 'translate(-50%, -50%)';
     countdownElement.style.zIndex = 1000000;
-    countdownElement.style.fontSize = '20rem';
+    countdownElement.style.fontSize = '30rem';
     countdownElement.style.color = 'gray';
     document.body.appendChild(countdownElement);
   }
@@ -89,6 +105,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         RemoveCounterValue();
         sendResponse({
           performed: `counted removed`,
+          time: Date.now()
+        });
+        break;
+      case 'enterFullScreen':        
+        EnterFullScreen();
+        sendResponse({
+          performed: `entered full screen`,
           time: Date.now()
         });
         break;
