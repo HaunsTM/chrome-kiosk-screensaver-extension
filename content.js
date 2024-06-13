@@ -108,13 +108,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           time: Date.now()
         });
         break;
-      case 'enterFullScreen':        
-        EnterFullScreen();
-        sendResponse({
-          performed: `entered full screen`,
-          time: Date.now()
-        });
-        break;
       default:
         sendResponse({
           performed: `task not recognized: ${message.task}`,

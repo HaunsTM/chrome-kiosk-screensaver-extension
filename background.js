@@ -1,3 +1,12 @@
+
+importScripts("mqtt.min.js");
+
+// Now you can use the MQTT library
+// For example, create a client and connect to a broker
+let mqttClient = null;
+
+
+
 const State = Object.freeze({
   INITIAL: Symbol("initial"),
   ACTIVE: Symbol("active"),
@@ -21,7 +30,15 @@ const settings = {
   noDim: 0,
   idleTime : 15,								// Idle time in seconds
   countDownStart: 5,
-  countDownDim: 30
+  countDownDim: 30,
+  mqtt : {
+    brokerURL: 'ws://10.0.0.6:1884',
+    credentials: {
+      username: 'mqtt1',
+      password: 'mqtt1'
+    },
+    topicIotKioskAlert: 'iot/kiosk/alert'
+  }
 };
 
 // common runtime variables
@@ -63,6 +80,25 @@ const SetTabName = (tabId, newTabName) => {
   });
 }
 
+const StartConsumeMqtt = () => {
+  mqttClient = mqtt.connect(settings.mqtt.brokerURL, settings.mqtt.credentials); 
+
+  // Subscribe to a topic
+  mqttClient.subscribe(settings.mqtt.topicIotKioskAlert);
+
+  // Listen for incoming messages
+  mqttClient.on("message", (topic, message) => {
+      // Handle the message as needed
+  });
+
+  // Handle disconnections
+  mqttClient.on("close", () => {
+      console.log("Disconnected from the broker");
+      // Implement reconnection logic here
+      setTimeout(connectToBroker, 5000); // Reconnect after 5 seconds (adjust as needed)
+  });
+}
+
 // tab logic
 function findTabId(regex) {
   return new Promise((resolve, reject) => {
@@ -74,7 +110,7 @@ function findTabId(regex) {
         }
       }
       
-      WriteToLog(`NOT_FOUND ${regex} | ${JSON.stringify(tabs)}`)
+      //WriteToLog(`NOT_FOUND ${regex} | ${JSON.stringify(tabs)}`)
       resolve(-1);  // Return -1 if no tabs match the URL      
     });
   });
@@ -284,4 +320,5 @@ chrome.idle.setDetectionInterval(settings.idleTime);
 // start the extension
 (async () => {
   await ChangeState();
+  StartConsumeMqtt();
 })();
