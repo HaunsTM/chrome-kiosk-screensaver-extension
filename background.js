@@ -261,7 +261,7 @@ chrome.runtime.onConnect.addListener((port) => {
     if (message.category === 'documentEvent' &&
       (message.type === 'click' || 
        message.type === 'keydown' || 
-       message.type === 'mousemove' || 
+       // message.type === 'mousemove' || // mousemove seems to trigger even if no mouse or movement is present 
        message.type === 'touchmove' || 
        message.type === 'touchstart' 
      )) {
