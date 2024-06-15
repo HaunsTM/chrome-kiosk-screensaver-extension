@@ -36,7 +36,8 @@ const settings = {
       username: 'mqtt1',
       password: 'mqtt1'
     },
-    topicIotKioskAlert: 'iot/kiosk/alert'
+    topicIotKioskAlert: 'iot/kiosk/alert',
+    topicIotKioskDebug: 'iot/kiosk/debug'
   }
 };
 
@@ -69,6 +70,22 @@ const WriteToLog = (logMessage) => {
   console.log(`[${year}-${month}-${date} ${hours}:${minutes}:${seconds} ] - ${logMessage}`);
 }
 
+const GetTimestamp = () => {
+  let date = new Date().toLocaleString("sv-SE", {timeZone: "Europe/Stockholm"});
+  date = new Date(date);
+
+  let year = date.getFullYear();
+  let month = ("0" + (date.getMonth() + 1)).slice(-2);
+  let day = ("0" + date.getDate()).slice(-2);
+  let hours = ("0" + date.getHours()).slice(-2);
+  let minutes = ("0" + date.getMinutes()).slice(-2);
+  let seconds = ("0" + date.getSeconds()).slice(-2);
+
+  let timestamp = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+
+  return timestamp;
+}
+
 const SetTabName = (tabId, newTabName) => {
   chrome.scripting.executeScript({
     target: { tabId: tabId },
@@ -77,6 +94,16 @@ const SetTabName = (tabId, newTabName) => {
     },
     args: [newTabName]
   });
+}
+
+const SendDebugMqtt = (message) => {
+  const messageObject = {
+    time: GetTimestamp(),
+    message: message
+  };
+
+  mqttClient?.publish(
+    settings.mqtt.topicIotKioskDebug, JSON.stringify(messageObject));
 }
 
 const StartConsumeMqtt = () => {
@@ -221,7 +248,8 @@ async function ChangeState() {
   switch (runtime.state) {
     case State.INITIAL:
       WriteToLog(`State.INITIAL`);
-
+      
+      StartConsumeMqtt();
       idleTimer = new Timer(settings.idleTime, OnTimesUpGoToIdle);
       runtime.state = State.ACTIVE;
       await ChangeState();
@@ -229,6 +257,8 @@ async function ChangeState() {
 
     case State.ACTIVE:
       WriteToLog(`State.ACTIVE`);
+
+      idleTimer = idleTimer?? new Timer(settings.idleTime, OnTimesUpGoToIdle);
       idleTimer.start();
 
       // Clear the timeout if it exists      
@@ -273,7 +303,7 @@ async function ChangeState() {
 
     case State.IDLE:
       WriteToLog(`State.IDLE`);
-      idleTimer.stop();
+      idleTimer?.stop();
 
       if (runtime.countdownBeforeIdlenessTimerId) {
         clearTimeout(runtime.countdownBeforeIdlenessTimerId);
@@ -306,6 +336,7 @@ chrome.runtime.onConnect.addListener((port) => {
        message.type === 'touchstart' 
      )) {
      runtime.state = State.ACTIVE;
+     SendDebugMqtt(`event registered: ${JSON.stringify(message)}`);
      
      await ChangeState();
    }
@@ -321,7 +352,6 @@ const OnTimesUpGoToIdle = async () => {
 // start the extension
 (async () => {
   await ChangeState();
-  StartConsumeMqtt();
 })();
 
 
