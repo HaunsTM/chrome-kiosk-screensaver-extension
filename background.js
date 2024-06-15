@@ -4,8 +4,7 @@ importScripts("mqtt.min.js");
 // Now you can use the MQTT library
 // For example, create a client and connect to a broker
 let mqttClient = null;
-
-
+let idleTimer = null;
 
 const State = Object.freeze({
   INITIAL: Symbol("initial"),
@@ -28,7 +27,7 @@ const settings = {
     dimPercent: 0   //no dim
   },
   noDim: 0,
-  idleTime : 15,								// Idle time in seconds
+  idleTime : 10,								// Idle time in seconds
   countDownStart: 5,
   countDownDim: 30,
   mqtt : {
@@ -222,30 +221,38 @@ async function ChangeState() {
   switch (runtime.state) {
     case State.INITIAL:
       WriteToLog(`State.INITIAL`);
-      
+
+      idleTimer = new Timer(settings.idleTime, OnTimesUpGoToIdle);
       runtime.state = State.ACTIVE;
       await ChangeState();
       break;
+
     case State.ACTIVE:
       WriteToLog(`State.ACTIVE`);
+      idleTimer.start();
 
-      // Clear the timeout if it exists
+      // Clear the timeout if it exists      
       if (runtime.countdownBeforeIdlenessTimerId) {
         clearTimeout(runtime.countdownBeforeIdlenessTimerId);
+        runtime.countdownBeforeIdlenessTimerId = null;
       }
+
       if (runtime.countdownCounterTimerId) {
-        clearInterval(runtime.countdownCounterTimerId);
+        clearTimeout(runtime.countdownCounterTimerId);
+        runtime.countdownCounterTimerId = null;
       }
+
       RemoveCountDownCounter(runtime.webPage.tabId);
       ChangeScreenBrightness(runtime.webPage.tabId, settings.noDim);
       ChangeScreenBrightness(runtime.screensaver.tabId, settings.noDim);
       
-      chrome.tabs.update(runtime.webPage.tabId, {active: true});
       // Set a new timeout
       runtime.countdownBeforeIdlenessTimerId = setTimeout(async () => {
         runtime.state = State.COUNTDOWN;
         await ChangeState();
       }, (settings.idleTime - settings.countDownStart) * 1000);
+      
+      chrome.tabs.update(runtime.webPage.tabId, {active: true});
       break;
 
     case State.COUNTDOWN:
@@ -260,27 +267,24 @@ async function ChangeState() {
 
       runtime.countdownCounterTimerId = setInterval(async () => {
         runtime.countdownCounterValue--;
-        PrintCountDownCounterValue(runtime.webPage.tabId, runtime.countdownCounterValue);
-        if (runtime.countdownCounterValue <= 0) {
-          if (runtime.countdownCounterTimerId) {
-            clearInterval(runtime.countdownCounterTimerId);
-          }
-          
-          runtime.state = State.IDLE;
-          RemoveCountDownCounter(runtime.webPage.tabId);          
-          await ChangeState();
-        }
+        PrintCountDownCounterValue(runtime.webPage.tabId, runtime.countdownCounterValue);        
       }, 1000);
       break;
+
     case State.IDLE:
       WriteToLog(`State.IDLE`);
+      idleTimer.stop();
 
       if (runtime.countdownBeforeIdlenessTimerId) {
         clearTimeout(runtime.countdownBeforeIdlenessTimerId);
+        runtime.countdownBeforeIdlenessTimerId = null;
       }
+
       if (runtime.countdownCounterTimerId) {
-        clearInterval(runtime.countdownCounterTimerId);
+        clearTimeout(runtime.countdownCounterTimerId);
+        runtime.countdownCounterTimerId = null;
       }
+
       ChangeScreenBrightness(runtime.screensaver.tabId, settings.screensaverPage.dimPercent);
       chrome.tabs.update(runtime.screensaver.tabId, {active: true});
       
@@ -308,17 +312,56 @@ chrome.runtime.onConnect.addListener((port) => {
   });
 });
 
-chrome.idle.onStateChanged.addListener(async (state) => {
-if (state === 'active') {
-    runtime.state = State.ACTIVE;
-    await ChangeState();
-  }
-});
 
-chrome.idle.setDetectionInterval(settings.idleTime);
+const OnTimesUpGoToIdle = async () => {
+  runtime.state = State.IDLE;
+  await ChangeState();
+}
 
 // start the extension
 (async () => {
   await ChangeState();
   StartConsumeMqtt();
 })();
+
+
+class Timer {
+  constructor(seconds, onTimesUpCallbackFunction) {
+      this.seconds = seconds;
+      this.originalSeconds = seconds;
+      this.intervalId = null;
+      this.onTimesUpCallback = onTimesUpCallbackFunction;
+  }
+
+  initiate() {
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+    }
+    this.reset();
+  }
+
+  start() {
+    this.initiate();
+    this.intervalId = setInterval(() => {
+        if(this.seconds === 0) {
+            this.timesUp();
+            this.stop();
+        } else {
+            this.seconds--;
+            console.log(this.seconds);
+        }
+    }, 1000);
+  }
+
+  reset() {
+      this.seconds = this.originalSeconds;
+  }
+
+  stop() {    
+    this.initiate();
+  }
+
+  timesUp() {
+    this.onTimesUpCallback();
+  }
+}
