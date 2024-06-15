@@ -1,83 +1,126 @@
-To start Chrome and load an extension from the terminal, you can use the --load-extension flag followed by the path to your extension. Here’s how you can do it on both Linux and Windows:
 
-Linux: Open your terminal and type:
+# Kiosk Screensaver
 
-google-chrome --start-fullscreen --load-extension=/path/to/your/extension
+This extension for Chrome aims to mimic a screensaver. The target use case is to have it running on a Raspberry Pi and switch between two tabs with different web pages.
+If the user is considered "idle", `screensaverPage` should be active. If the user is considered "active", `webPage` should be active.
 
-Replace /path/to/your/extension with the actual path to the directory containing your extension.
+Settings are in `background.js`.
 
-Windows: Open Command Prompt and type:
-
-start chrome.exe --load-extension=C:\path\to\your\extension
-
-Replace C:\path\to\your\extension with the actual path to the directory containing your extension.
-
-Please note that the path should be the absolute path to the directory containing the manifest.json file of your extension. Also, ensure that Chrome is not already running when you use these commands.
+# How to set up
+When installing this extension, no chrome instances may be running (important!). Please also not that it is not possible to use `--kiosk`-flag. That would make it impossible to switch between tabs.
 
 Remember, this is a one-time load, meaning the extension will not remain installed on your Chrome browser if you close it. If you want the extension to persist, you need to install it through the Chrome extensions page (chrome://extensions).
 
+## Linux: Open your terminal and type:
+
+```
+chromium-browser --noerrdialogs \
+  --disable-infobars \
+  --load-extension=/home/pi/chrome-kiosk-screensaver-extension \
+  --start-fullscreen \
+  --check-for-update-interval=31536000 \
+  --ignore-gpu-blacklist \
+  --use-gl=egl \
+  --enable-native-gpu-memory-buffers \
+  --enable-accelerated-2d-canvas \
+  --force-gpu-rasterization
+```
 
 
----
-This is logic for my chrome browser kiosk screen saver
+## Windows: 
+(Not exactly the main target for this extension. This is for developing and evaluation purposes.)
 
-background.js
+`chrome.exe --start-fullscreen --load-extension="C:\Users\person\Desktop\chrome-kiosk-screensaver-extension"`
+`Start-Process "chrome.exe" -ArgumentList "--start-fullscreen", "--load-extension=C:\Users\person\Desktop\chrome-kiosk-screensaver-extension"`
 
-    let webpage = 'http://10.0.0.6:8123/local/kommandoran/index.html#/';
-    let screensaverPage = 'http://10.0.0.6:8123';
+# A guide to set up a KIOSK on a Raspberry Pi
+A working guide to set up the KIOSK has been this: https://www.oddicles.net/blog/step-by-step-set-up-a-kiosk-web-display-using-the-raspberry-pi/:
 
-    let idleTime = 15; 								// Idle time in seconds
-    let screensaverTabId, webpageTabId;
-
-    chrome.tabs.create({url: screensaverPage}, (tab) => { 	// Open screensaver page
-    screensaverTabId = tab.id;
-    });
-    chrome.tabs.create({url: webpage}, (tab) => { 			// Open webpage and make it active
-    webpageTabId = tab.id;
-    });
-
-    chrome.idle.setDetectionInterval(idleTime);
-
-    chrome.idle.onStateChanged.addListener((state) => {
-        if (state === 'idle') {      
-        chrome.tabs.update(screensaverTabId, {active: true});
-        } else if (state === 'active') {      
-        chrome.tabs.update(webpageTabId, {active: true});
-        }
-    });
-
----
-manifest.json
-
-    {
-        "manifest_version": 3,
-        "name": "Kiosk Screensaver",
-        "version": "1.0",
-        "background": {
-            "service_worker": "background.js"
-        },
-        "permissions": [
-            "tabs",
-            "idle"
-        ],
-        "web_accessible_resources": [
-            {
-            "resources": ["tat_popup.js", "popu.js"],
-            "matches": ["<all_urls>"]
-            }
-        ]
-    }
----
-
-This is how I start it
-
-    google-chrome --load-extension=/path/to/your/extension
-
-
-
----
-
-This is what I need help with:
-Since this is a kiosk browser, the user must never be allowed to enter a new URL. All URLs should be dealt with via my extension.  
-
-When I close my chrome browser, the extension should be removed
+> ## Step-by-Step
+> 
+> ### Configure the raspberry pi
+> 
+> Enter the command below, and use the configuration that follows. 
+> `raspi-config`  may have different menu structures, but the options
+> should still be there.
+> 
+> ```bash sudo raspi-config ```
+> 
+> 1.  Change the password
+> 2.  Set Timezone (ie. America/Vancouver)
+> 3.  Set Keyboard (optional, only if not using SSH)
+>     1.  Choose “Generic 104-key PC” for US/Canada, 105-key PC (intl.) for the rest of the world
+>     2.  Choose “Other Language -> English (US)”
+> 4.  Update hostname
+> 5.  Display Options -> Underscan -> No Compensation
+> 6.  System Options -> Boot/Autologin -> Console Autologin -> Yes
+> 7.  Set gpu memory to 128mb or more
+> 8.  Set GL graphics driver the FakeKMS. Others may not display properly, or audio may not work
+> 9.  Finish and Reboot
+> 
+> ### Update package (apt) data.
+> 
+> IMPORTANT! Do this before installing other packages.
+> 
+> ```bash sudo apt update ```
+> 
+> ### Install x server and tools
+> 
+> ```bash sudo apt install -y --no-install-recommends xserver-xorg xinit
+> x11-xserver-utils xdotool ```
+> 
+> ### Install openbox and chromium
+> 
+> ```bash sudo apt install -y --no-install-recommends openbox
+> chromium-browser ```
+> 
+> ### Install mesa drivers for hw acceleration
+> 
+> ```bash sudo apt install -y libgles2-mesa mesa-utils libsdl2-dev ```
+> 
+> ### Edit  `/etc/xdg/openbox/autostart`  as root, and add the following content
+> 
+> /etc/xdg/openbox/autostart
+> 
+> `xset -dpms      # turn off display power management system xset s
+> noblank  # turn off screen blanking xset s off      # turn off the
+> screen saver
+> 
+> # Set manual resolution for X
+> # xrandr --output HDMI-1 --mode 1280x720 --rate 30
+> 
+> # Prevent chromium crash error popups sed -i 's/"exited_cleanly":false/"exited_cleanly":true/'
+> ~/.config/chromium/'Local State' sed -i
+> 's/"exited_cleanly":false/"exited_cleanly":true/;
+> s/"exit_type":"[^"]\+"/"exit_type":"Normal"/'
+> ~/.config/chromium/Default/Preferences
+> 
+> # Run chromium with the KIOSK_URL env variable chromium-browser --noerrdialogs \   --disable-infobars \   --kiosk $KIOSK_URL \   --check-for-update-interval=31536000 \   --ignore-gpu-blacklist \   --use-gl=egl \   --enable-native-gpu-memory-buffers \   --enable-accelerated-2d-canvas \   --force-gpu-rasterization \   --cast-app-background-color=000000ff \   --default-background-color=000000ff   # --disable-gpu-compositing \  # Do not disable gpu compositing. Canvas effects are smoother this way`
+> 
+> Hint: Shift-Insert to paste into putty+vim in insert mode
+> 
+> Hint: Use the command  `:set`  paste and  `:set nopaste`  within vim,
+> if auto-formatting is a problem when pasting.
+> 
+> ### Edit  `/etc/xdg/openbox/environment`  as root, and add the following
+> 
+> /etc/xdg/openbox/environment
+> 
+> `export KIOSK_URL=http://localhost:3530`
+> 
+> This will be the URL that will be opened when the RPi boots up.
+> 
+> ### Edit/append to  `~/.bash_profile`
+> 
+> ~/.bash_profile
+> 
+> `# Start X server on boot [[ -z $DISPLAY && $XDG_VTNR -eq 1 ]] &&
+> startx -- -nocursor`
+> 
+> ### Reboot
+> 
+> ```bash sudo reboot ```
+> 
+> If X server gives an error and chromium doesn’t start, try setting a
+> screen resolution in  `sudo raspi-config`  or changing the GL driver.
+> FakeKMS is preferred.
