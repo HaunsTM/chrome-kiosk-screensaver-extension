@@ -10,7 +10,8 @@ const State = Object.freeze({
   INITIAL: Symbol("initial"),
   ACTIVE: Symbol("active"),
   COUNTDOWN_COUNTER: Symbol("countdownCounter"),
-  IDLE: Symbol("idle")
+  IDLE: Symbol("idle"),
+  ALERT: Symbol("alert")
 });
 
 // common settings constants
@@ -43,6 +44,13 @@ const settings = {
 
 // common runtime variables
 const runtime = {
+  alertPage : {
+    urlCurrent : 'NO_URL',
+    messageToDisplay:"",
+    dimPercent: 0, // no dim
+    timeToShowURLBeforeGoingToActiveStateMs: 1,
+    tabId : -1
+  },
   screensaver : {
     urlCurrent : 'NO_URL',
     tabId : -1,
@@ -52,6 +60,7 @@ const runtime = {
     tabId : -1,
   },
   state : State.INITIAL,
+  alertTimerId: null,
   countdownBeforeIdlenessTimerId: null,
   countdownCounterTimerId: null,
   countdownCounterValue: -1
@@ -107,21 +116,35 @@ const SendDebugMqtt = (message) => {
 }
 
 const StartConsumeMqtt = () => {
-  mqttClient = mqtt.connect(settings.mqtt.brokerURL, settings.mqtt.credentials); 
+
+  const ConnectToBroker = () => {
+    mqttClient = mqtt.connect(settings.mqtt.brokerURL, settings.mqtt.credentials); 
+  };
+  ConnectToBroker();
 
   // Subscribe to a topic
   mqttClient.subscribe(settings.mqtt.topicIotKioskAlert);
 
   // Listen for incoming messages
-  mqttClient.on("message", (topic, message) => {
-      // Handle the message as needed
+  mqttClient.on("message", async (topic, messageBuffer) => {
+    const message = messageBuffer.toString();
+
+    switch(topic) {
+      case settings.mqtt.topicIotKioskAlert:
+        runtime.state = State.ALERT;
+        messageJSON = JSON.parse(message);
+        runtime.alertPage = Object.assign(runtime.alertPage, messageJSON);
+        await ChangeState();
+        break;
+      default:
+        SendDebugMqtt()
+    }
   });
 
   // Handle disconnections
   mqttClient.on("close", () => {
-      console.log("Disconnected from the broker");
       // Implement reconnection logic here
-      setTimeout(connectToBroker, 5000); // Reconnect after 5 seconds (adjust as needed)
+      setTimeout(ConnectToBroker, 5000); // Reconnect after 5 seconds (adjust as needed)
   });
 }
 
@@ -320,6 +343,31 @@ async function ChangeState() {
       
       RemoveCountDownCounter(runtime.webPage.tabId);
       ChangeScreenBrightness(runtime.webPage.tabId, settings.noDim);
+      break;
+    case State.ALERT:
+      idleTimer?.stop();
+
+      if (runtime.countdownBeforeIdlenessTimerId) {
+        clearTimeout(runtime.countdownBeforeIdlenessTimerId);
+        runtime.countdownBeforeIdlenessTimerId = null;
+      }
+
+      if (runtime.countdownCounterTimerId) {
+        clearTimeout(runtime.countdownCounterTimerId);
+        runtime.countdownCounterTimerId = null;
+      }
+      runtime.alertPage.tabId = await createTabAndGetId(runtime.alertPage.urlCurrent);
+      chrome.tabs.update(runtime.alertPage.tabId, {active: true});
+      ChangeScreenBrightness(runtime.alertPage.tabId, runtime.alertPage.dimPercent);
+
+      runtime.alertTimerId = setTimeout(async () => {        
+        clearTimeout(runtime.alertTimerId);
+        runtime.alertTimerId = null;
+        chrome.tabs.remove(runtime.alertPage.tabId);
+        runtime.state = State.ACTIVE;
+        await ChangeState();
+      }, runtime.alertPage.timeToShowURLBeforeGoingToActiveStateMs);
+
       break;
   }
 }
