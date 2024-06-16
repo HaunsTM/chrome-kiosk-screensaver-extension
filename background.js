@@ -28,8 +28,8 @@ const settings = {
     dimPercent: 0   //no dim
   },
   noDim: 0,
-  idleTime : 60,								// Idle time in seconds
-  countDownStart: 5,
+  idleTime : 30,						// time a user can leave the browser untouched before idleness occurs
+  countDownStart: 5,        // how many seconds before idleness the countdown should start
   countDownDim: 30,
   mqtt : {
     brokerURL: 'ws://10.0.0.6:1884',
