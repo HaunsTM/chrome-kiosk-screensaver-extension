@@ -49,15 +49,15 @@ const runtime = {
     messageToDisplay:"",
     dimPercent: 0, // no dim
     timeToShowURLBeforeGoingToActiveStateMs: 1,
-    tabId : -1
+    tabId : null
   },
   screensaver : {
     urlCurrent : 'NO_URL',
-    tabId : -1,
+    tabId : null,
   },
   webPage: {
     urlCurrent : 'NO_URL',
-    tabId : -1,
+    tabId : null,
   },
   state : State.INITIAL,
   alertTimerId: null,
@@ -228,6 +228,7 @@ function ChangeScreenBrightness(tabId, dimPercent) {
   });
 }
 
+// count down
 function PrintCountDownCounterValue(tabId, counterValue) {
   const message = {
     category: `backgroundToContentEvent`,
@@ -263,7 +264,43 @@ function RemoveCountDownCounter (tabId) {
     }
   });
 }
-                                                     
+
+const StopCountdownBeforeIdlenessTimer = () => {
+  if (runtime.countdownBeforeIdlenessTimerId) {
+    clearTimeout(runtime.countdownBeforeIdlenessTimerId);
+    runtime.countdownBeforeIdlenessTimerId = null;
+  }
+};
+
+const StopCountdownCounterTimer = () => {
+  if (runtime.countdownCounterTimerId) {
+    clearTimeout(runtime.countdownCounterTimerId);
+    runtime.countdownCounterTimerId = null;
+  }
+};
+
+
+
+// alert 
+const StopAlertTimer = () => {
+  if (runtime.alertTimerId) {
+    clearTimeout(runtime.alertTimerId);
+    runtime.alertTimerId = null;
+  }
+};
+
+const RemoveAlertTab = () => {
+  if (runtime.alertPage.tabId) {
+    chrome.tabs.get(runtime.alertPage.tabId, function(tab) {
+      if (!chrome.runtime.lastError) {
+        chrome.tabs.remove(runtime.alertPage.tabId);
+        runtime.alertPage.tabId = null;
+      }
+    });
+  }
+};
+
+// state machine
 async function ChangeState() {
   
   await EnsureOpenWebPagesAndUpdateTabIds();
@@ -284,16 +321,8 @@ async function ChangeState() {
       idleTimer = idleTimer?? new Timer(settings.idleTime, OnTimesUpGoToIdle);
       idleTimer.start();
 
-      // Clear the timeout if it exists      
-      if (runtime.countdownBeforeIdlenessTimerId) {
-        clearTimeout(runtime.countdownBeforeIdlenessTimerId);
-        runtime.countdownBeforeIdlenessTimerId = null;
-      }
-
-      if (runtime.countdownCounterTimerId) {
-        clearTimeout(runtime.countdownCounterTimerId);
-        runtime.countdownCounterTimerId = null;
-      }
+      StopCountdownBeforeIdlenessTimer();
+      StopCountdownCounterTimer();
 
       RemoveCountDownCounter(runtime.webPage.tabId);
       ChangeScreenBrightness(runtime.webPage.tabId, settings.noDim);
@@ -310,10 +339,7 @@ async function ChangeState() {
 
     case State.COUNTDOWN:
       WriteToLog(`State.COUNTDOWN`);
-
-      if (runtime.countdownCounterTimerId) {
-        clearInterval(runtime.countdownCounterTimerId);
-      }
+      StopCountdownCounterTimer();
       
       runtime.countdownCounterValue = settings.countDownStart;
       ChangeScreenBrightness(runtime.webPage.tabId, settings.countDownDim);
@@ -328,15 +354,8 @@ async function ChangeState() {
       WriteToLog(`State.IDLE`);
       idleTimer?.stop();
 
-      if (runtime.countdownBeforeIdlenessTimerId) {
-        clearTimeout(runtime.countdownBeforeIdlenessTimerId);
-        runtime.countdownBeforeIdlenessTimerId = null;
-      }
-
-      if (runtime.countdownCounterTimerId) {
-        clearTimeout(runtime.countdownCounterTimerId);
-        runtime.countdownCounterTimerId = null;
-      }
+      StopCountdownBeforeIdlenessTimer();
+      StopCountdownCounterTimer();
 
       ChangeScreenBrightness(runtime.screensaver.tabId, settings.screensaverPage.dimPercent);
       chrome.tabs.update(runtime.screensaver.tabId, {active: true});
@@ -347,23 +366,17 @@ async function ChangeState() {
     case State.ALERT:
       idleTimer?.stop();
 
-      if (runtime.countdownBeforeIdlenessTimerId) {
-        clearTimeout(runtime.countdownBeforeIdlenessTimerId);
-        runtime.countdownBeforeIdlenessTimerId = null;
-      }
+      StopCountdownBeforeIdlenessTimer();
+      StopCountdownCounterTimer();
+      RemoveAlertTab();
 
-      if (runtime.countdownCounterTimerId) {
-        clearTimeout(runtime.countdownCounterTimerId);
-        runtime.countdownCounterTimerId = null;
-      }
       runtime.alertPage.tabId = await createTabAndGetId(runtime.alertPage.urlCurrent);
       chrome.tabs.update(runtime.alertPage.tabId, {active: true});
       ChangeScreenBrightness(runtime.alertPage.tabId, runtime.alertPage.dimPercent);
 
       runtime.alertTimerId = setTimeout(async () => {        
-        clearTimeout(runtime.alertTimerId);
-        runtime.alertTimerId = null;
-        chrome.tabs.remove(runtime.alertPage.tabId);
+        StopAlertTimer();
+        RemoveAlertTab();
         runtime.state = State.ACTIVE;
         await ChangeState();
       }, runtime.alertPage.timeToShowURLBeforeGoingToActiveStateMs);

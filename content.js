@@ -31,7 +31,17 @@ const PerformDimScreen = (dimValue) => {
     overlay.style.zIndex = 999999;
     document.body.appendChild(overlay);
   }
+  // Hide scrollbar for Chrome, Safari and Opera
+  overlay.style['::-webkit-scrollbar'] = 'display: none';
 
+  // Apply the CSS rule
+  let style = document.createElement('style');
+  style.innerHTML = `
+    #${overlay}::-webkit-scrollbar { 
+      width: 0 !important 
+    }
+  `;
+  document.head.appendChild(style);
   overlay.style.backgroundColor = `rgba(0, 0, 0, ${dimValue})`;
 }
 
@@ -61,7 +71,19 @@ const PrintCounterValue = (counterValue) => {
     countdownElement.style.color = 'gray';
     document.body.appendChild(countdownElement);
   }
-  
+  // Hide all scrollbars
+
+  // Hide scrollbar for Chrome, Safari and Opera
+  countdownElement.style['::-webkit-scrollbar'] = 'display: none';
+
+  // Apply the CSS rule
+  let style = document.createElement('style');
+  style.innerHTML = `
+    #${dimCountdownElement}::-webkit-scrollbar { 
+      width: 0 !important 
+    }
+  `;
+  document.head.appendChild(style);
   countdownElement.textContent = counterValue;
 }
 
