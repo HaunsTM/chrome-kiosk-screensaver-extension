@@ -19,7 +19,7 @@ const settings = {
   screensaverPage : {
     urlStart: 'http://10.0.0.6:8123/local/screensaver/index.html#/screen-saver',
     regexMandatoryUrl: /(https?:[/]{2})10[.]0[.]0[.]6[:]8123[/](?=.*screen-saver).*/g,
-    dimPercent: 60   //fully dimmed
+    dimPercent: 40   //fully dimmed
   },
   
   webPage : {
@@ -28,7 +28,7 @@ const settings = {
     dimPercent: 0   //no dim
   },
   noDim: 0,
-  idleTime : 10,								// Idle time in seconds
+  idleTime : 60,								// Idle time in seconds
   countDownStart: 5,
   countDownDim: 30,
   mqtt : {
@@ -302,7 +302,8 @@ const RemoveAlertTab = () => {
 
 // state machine
 async function ChangeState() {
-  
+  StopAlertTimer();
+  RemoveAlertTab();
   await EnsureOpenWebPagesAndUpdateTabIds();
 
   switch (runtime.state) {
@@ -368,7 +369,6 @@ async function ChangeState() {
 
       StopCountdownBeforeIdlenessTimer();
       StopCountdownCounterTimer();
-      RemoveAlertTab();
 
       runtime.alertPage.tabId = await createTabAndGetId(runtime.alertPage.urlCurrent);
       chrome.tabs.update(runtime.alertPage.tabId, {active: true});
