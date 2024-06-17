@@ -1,17 +1,37 @@
-
 # Kiosk Screensaver
+This Chrome extension aims to mimic a screensaver. There are a few important points to note:
 
-This extension for Chrome aims to mimic a screensaver. The target use case is to have it running on a Raspberry Pi and switch between two tabs with different web pages.
-If the user is considered "idle", `screensaverPage` should be active. If the user is considered "active", `webPage` should be active.
+1. Kiosk Mode: This extension cannot be used if Chrome is running in KIOSK mode.
+1. Tab Behavior: When the extension is running in a browser, two tabs will be alternating: the “main webpage” and the “screensaver webpage.”
+1. Alert Page: The extension can also display an “alert page” in a tab. It consumes MQTT messages, and messages on a certain topic trigger the extension to act. Fo   example, JSON-message
+     ```
+    {
+        "urlCurrent": "https://www.svtplay.se/kanaler/svt2?start=auto", // URL of a web page to display
+        "messageToDisplay": "", // Message to display
+        "dimPercent": 0, // [0 = no dim <=> 100 = fully dimmed]
+        "timeToShowURLBeforeGoingToActiveStateMs": 10 * 1000 // How long the alert tab should be displayed
+    }
+    ```
+on topic `iot/kiosk/alert`.
 
-Settings are in `background.js`.
+# When is it suitable to use this screensaver?
+For example, use it with your home automation system on a raspberry pi with a touch screen:
 
-# How to set up
-When installing this extension, no chrome instances may be running (important!). Please also not that it is not possible to use `--kiosk`-flag. That would make it impossible to switch between tabs.
+| Tab/Url    | Example of usage |
+| -------- | ------- |
+| main webpage  | home automation system    |
+| screensaver webpage | webpage with family photos, weather forecast, clock, bus departures, etc.|
+| alert webpage    | video feed from security cam   |
 
-Remember, this is a one-time load, meaning the extension will not remain installed on your Chrome browser if you close it. If you want the extension to persist, you need to install it through the Chrome extensions page (chrome://extensions).
 
-## Linux: Open your terminal and type:
+The extension operates as follows:
+
+1. ACTIVE State: If the user is interacting with the browser, the “main webpage” tab is displayed.
+1. IDLE State: If the user is not interacting with the browser, the “screensaver webpage” tab is displayed.
+1. Alert State: If an alert MQTT message is published, it takes precedence over other states. The alert URL will be displayed in a new tab, which will close after a specified time before returning to the ACTIVE state.
+# How to run with Chromium Browser
+## Linux:
+Open your terminal and type the following command:
 
 ```
 chromium-browser --noerrdialogs \
@@ -25,13 +45,23 @@ chromium-browser --noerrdialogs \
   --enable-accelerated-2d-canvas \
   --force-gpu-rasterization
 ```
+### If code is updated...
+Please note that if the code is updated, simply restarting the extension is not enough. You must RELOAD it from the GUI. Follow these steps:
+1. Start the extension without the --start-fullscreen flag.
+1. Go to chrome://extensions.
+1. Reload the extension.
+1. Restart the Raspberry Pi and the extension with the --start-fullscreen flag.
+## Windows:
+(Not the primary target for this extension; provided for development and evaluation purposes.)
+Run the following command in the Windows command prompt:
+```
+chrome.exe --start-fullscreen --load-extension="C:\Users\person\Desktop\chrome-kiosk-screensaver-extension"
+```
+Or use PowerShell:
+```
+Start-Process "chrome.exe" -ArgumentList "--start-fullscreen", "--load-extension=C:\Users\person\Desktop\chrome-kiosk-screensaver-extension"
+```
 
-
-## Windows: 
-(Not exactly the main target for this extension. This is for developing and evaluation purposes.)
-
-`chrome.exe --start-fullscreen --load-extension="C:\Users\person\Desktop\chrome-kiosk-screensaver-extension"`
-`Start-Process "chrome.exe" -ArgumentList "--start-fullscreen", "--load-extension=C:\Users\person\Desktop\chrome-kiosk-screensaver-extension"`
 
 # A guide to set up a KIOSK on a Raspberry Pi
 A working guide to set up the KIOSK has been this: https://www.oddicles.net/blog/step-by-step-set-up-a-kiosk-web-display-using-the-raspberry-pi/:
